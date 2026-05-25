@@ -84,6 +84,80 @@ def split_text(text: str, max_chars: int = 1000) -> list[str]:
         
     return chunks
 
+def parse_yaml_front_matter(text: str) -> tuple[dict[str, str], str]:
+    """YAMLフロントマターを極力堅牢にパースする（ライブラリ依存なし）"""
+    front_matter = {}
+    content = text
+    
+    # 改行コードの正規化
+    normalized_text = text.replace('\r\n', '\n')
+    
+    # 行頭の --- で始まり、次の --- で終わる部分を探す
+    match = re.match(r'^---\n(.*?)\n---\n', normalized_text, re.DOTALL)
+    if match:
+        yaml_block = match.group(1)
+        content = normalized_text[match.end():]
+        
+        lines = yaml_block.split('\n')
+        current_key = None
+        current_value = []
+        
+        for line in lines:
+            # 空行のハンドリング
+            if not line.strip():
+                if current_key:
+                    current_value.append("")
+                continue
+            
+            # 新しいキーの検出 (例: scene: "...")
+            # 行頭から始まるキー名とコロン
+            key_match = re.match(r'^([a-zA-Z0-9_-]+)\s*:\s*(.*)$', line)
+            if key_match:
+                # 既存のキーを保存
+                if current_key:
+                    front_matter[current_key] = "\n".join(current_value).strip()
+                
+                current_key = key_match.group(1).lower().replace('-', '_')
+                val = key_match.group(2).strip()
+                current_value = [val]
+            else:
+                # インデントされた行や継続行
+                if current_key:
+                    current_value.append(line.strip())
+        
+        # 最後のキーを保存
+        if current_key:
+            front_matter[current_key] = "\n".join(current_value).strip()
+            
+        # 各値のクォーテーション文字やブロックスカラー記号を剥ぎ取る
+        for k, v in front_matter.items():
+            if v.startswith('|') or v.startswith('>'):
+                v = v[1:].lstrip('\n')
+            if len(v) >= 2:
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+            front_matter[k] = v
+            
+    return front_matter, content
+
+def build_prompt(transcript: str, audio_profile: str = None, scene: str = None, directors_notes: str = None, sample_context: str = None) -> str:
+    """演出用のパラメータをGemini TTS向けの構造化プロンプト形式に構築する"""
+    parts = []
+    if audio_profile:
+        parts.append(f"# AUDIO PROFILE: {audio_profile}")
+    if scene:
+        parts.append(f"## THE SCENE: {scene}")
+    if directors_notes:
+        parts.append(f"### DIRECTOR'S NOTES\n{directors_notes}")
+    if sample_context:
+        parts.append(f"### SAMPLE CONTEXT\n{sample_context}")
+        
+    if parts:
+        parts.append(f"#### TRANSCRIPT\n{transcript}")
+        return "\n\n".join(parts)
+    else:
+        return transcript
+
 def main():
     AVAILABLE_MODELS = [
         "gemini-3.1-flash-tts-preview",
@@ -124,6 +198,26 @@ def main():
         default=1000,
         help="分割する際の目安となる最大文字数"
     )
+    parser.add_argument(
+        "-ap", "--audio-profile",
+        default=None,
+        help="音声のキャラクターペルソナや声質詳細（例: '女性ボイス、落ち着いたトーン'）"
+    )
+    parser.add_argument(
+        "-sc", "--scene",
+        default=None,
+        help="音声生成時の音響空間や感情的な雰囲気（例: '静かな部屋', '残響のある広い大聖堂'）"
+    )
+    parser.add_argument(
+        "-dn", "--directors-notes",
+        default=None,
+        help="話速、スタイル、アクセントなどの演技指示（例: 'ゆっくり、囁くように'）"
+    )
+    parser.add_argument(
+        "-sctx", "--sample-context",
+        default=None,
+        help="話し始めの文脈や状況のヒント（例: '昔話を優しく語り聞かせる場面'）"
+    )
     
     args = parser.parse_args()
     
@@ -147,8 +241,17 @@ def main():
         print(f"エラー: ファイルの読み込みに失敗しました: {e}", file=sys.stderr)
         sys.exit(1)
         
-    # クレンジング
-    cleaned_text = clean_markdown(raw_text)
+    # フロントマターのパース
+    front_matter, text_content = parse_yaml_front_matter(raw_text)
+    
+    # CLI引数を最優先し、指定がなければフロントマターから取得
+    audio_profile = args.audio_profile or front_matter.get("audio_profile")
+    scene = args.scene or front_matter.get("scene")
+    directors_notes = args.directors_notes or front_matter.get("directors_notes")
+    sample_context = args.sample_context or front_matter.get("sample_context")
+    
+    # クレンジング（フロントマターを省いた本文に対して行う）
+    cleaned_text = clean_markdown(text_content)
     if not cleaned_text.strip():
         print("警告: 読み上げるテキストが空です。", file=sys.stderr)
         sys.exit(0)
@@ -192,9 +295,18 @@ def main():
     for i, chunk in enumerate(chunks, 1):
         print(f"[{i}/{len(chunks)}] 音声生成中... ({len(chunk)}文字)", file=sys.stderr)
         try:
+            # 演出用のプロンプトを構築
+            prompt_with_context = build_prompt(
+                transcript=chunk,
+                audio_profile=audio_profile,
+                scene=scene,
+                directors_notes=directors_notes,
+                sample_context=sample_context
+            )
+            
             response = client.models.generate_content(
                 model=args.model,
-                contents=chunk,
+                contents=prompt_with_context,
                 config=config
             )
             
@@ -213,19 +325,11 @@ def main():
             raw_data = audio_part.data
             
             # もし返ってきた bytes が Base64 でエンコードされた状態のままであればデコードする
-            # (通常は inline_data.data 内でSDKによって bytes デコードされているが、
-            # 特殊な環境やバージョンにより Base64 文字列のままであった場合の堅牢性確保)
             try:
-                # bytes型であるが、中身がBase64文字列（ASCII文字のみ）としてパース可能で、かつデコード結果が妥当かチェック
-                # 生のPCMは高確率で非ASCIIバイトを含むが、Base64文字列はASCIIの範囲内であるため、
-                # ASCIIデコードを試みてエラーがなく、かつbase64デコードに成功した場合はそれを使用する。
                 if isinstance(raw_data, bytes):
-                    # Base64で表される文字列パターンにマッチするか簡易テスト
                     decoded = base64.b64decode(raw_data, validate=True)
-                    # デコードに成功した場合はそれを採用
                     raw_data = decoded
             except Exception:
-                # デコード失敗（またはvalidateエラー）した場合は、既に生のPCMバイナリとみなしそのまま通す
                 pass
                 
             combined_pcm_bytes.extend(raw_data)
