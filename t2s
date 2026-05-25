@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+import argparse
+import base64
+import os
+import re
+import sys
+import wave
+
+# google-genai SDK は仮想環境内のものをインポートするため、
+# 起動時に正しく仮想環境のライブラリがロードされる必要があります。
+# CLIコマンドとして動作させる場合、シバンで仮想環境のpythonを指定するか、
+# または実行時に動的にsys.pathを解決するかですが、
+# 一般的には `t2s` 自体を直接実行可能にし、仮想環境の python インタプリタで起動するのがスマートです。
+# ここでは標準のインポートを行い、呼び出し側で仮想環境の python を使用するか、
+# 後ほどラッパーを作成する形をとります。
+
+# 自身のスクリプトと同じディレクトリにある仮想環境 (.venv) の Python を自動的に使用して再実行します。
+# これにより、名前空間パッケージ (google.*) のインポート競合や、仮想環境のアクティベート漏れを完全に防止します。
+script_dir = os.path.dirname(os.path.abspath(__file__))
+venv_python = os.path.join(script_dir, ".venv", "bin", "python3")
+
+# 仮想環境のPythonが存在し、かつ現在起動中のPythonがそれと異なる場合、再起動する
+if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.abspath(venv_python):
+    try:
+        os.execv(venv_python, [venv_python] + sys.argv)
+    except Exception as e:
+        print(f"警告: 仮想環境のPythonでの再実行に失敗しました: {e}", file=sys.stderr)
+
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    print("エラー: 'google-genai' ライブラリをインポートできません。", file=sys.stderr)
+    print("仮想環境を有効にするか、依存ライブラリをインストールしてください。", file=sys.stderr)
+    print("セットアップ例: source .venv/bin/activate && pip install -r requirements.txt", file=sys.stderr)
+    sys.exit(1)
+
+def clean_markdown(text: str) -> str:
+    """Markdownの記号を除去・クレンジングする簡易処理"""
+    # 1. コードブロック (```...```) の中身を丸ごと削除
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # 2. インラインコード (`) の除去（中身は残す）
+    text = re.sub(r'`([^`\n]+)`', r'\1', text)
+    # 3. 見出し記号 (#) の除去（行頭の#とスペース）
+    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+    # 4. 箇条書き記号 (-, *, +, 数字.) の除去
+    text = re.sub(r'^[-\*\+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+    # 5. 太字・斜体 (**, *, __, _) の除去
+    text = re.sub(r'\*\*([^*]+)\*\*|__([^_]+)__', r'\1\2', text)
+    text = re.sub(r'\*([^*]+)\*|_([^_]+)_', r'\1\2', text)
+    # 6. 画像マークダウン (![alt](url)) の除去
+    text = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', text)
+    # 7. リンク [表示名](URL) を 表示名 のみに変換
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # 余分な空白や空行の整理
+    lines = [line.strip() for line in text.split('\n')]
+    cleaned_lines = [line for line in lines if line]
+    return '\n'.join(cleaned_lines)
+
+def split_text(text: str, max_chars: int = 1000) -> list[str]:
+    """テキストを自然な文の境界で最大文字数以下のチャンクに分割する"""
+    # 読点や句点、改行などの境界で分割候補を作る
+    sentences = re.split(r'(?<=[。？！?\n])', text)
+    
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        if not sentence.strip():
+            continue
+            
+        # 1つの文が上限を超えている場合は、文字数で強制分割
+        if len(sentence) > max_chars:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            
+            # 強制的にmax_charsごとに分割
+            sub_sentences = [sentence[i:i+max_chars] for i in range(0, len(sentence), max_chars)]
+            chunks.extend([s.strip() for s in sub_sentences[:-1]])
+            current_chunk = sub_sentences[-1]
+        elif len(current_chunk) + len(sentence) > max_chars:
+            chunks.append(current_chunk.strip())
+            current_chunk = sentence
+        else:
+            current_chunk += sentence
+            
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+        
+    return chunks
+
+def main():
+    AVAILABLE_MODELS = [
+        "gemini-3.1-flash-tts-preview",
+        "gemini-2.5-pro-preview-tts",
+        "gemini-2.5-flash-preview-tts"
+    ]
+    
+    AVAILABLE_VOICES = [
+        "Despina",
+        "Puck",
+        "Charon",
+        "Kore",
+        "Fenrir",
+        "Aoede"
+    ]
+
+    parser = argparse.ArgumentParser(
+        description="MarkdownテキストからGoogle AI Studio (Gemini) を利用して音声(WAV)ファイルを生成するCLIツール",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument("input_file", help="入力Markdownファイルのパス")
+    parser.add_argument("output_file", help="出力WAVファイルのパス")
+    parser.add_argument(
+        "-m", "--model",
+        default="gemini-3.1-flash-tts-preview",
+        choices=AVAILABLE_MODELS,
+        help="使用するGeminiモデル。音声生成（TTS）に対応しているプレビューモデルを指定します。"
+    )
+    parser.add_argument(
+        "-v", "--voice",
+        default="Despina",
+        choices=AVAILABLE_VOICES,
+        help="話者の声。Geminiがサポートするプリビルドのボイスから選択します。"
+    )
+    parser.add_argument(
+        "-c", "--chunk-size",
+        type=int,
+        default=1000,
+        help="分割する際の目安となる最大文字数"
+    )
+    
+    args = parser.parse_args()
+    
+    # APIキーの検証
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("エラー: 環境変数 'GEMINI_API_KEY' が設定されていません。", file=sys.stderr)
+        print("APIキーを設定してください: export GEMINI_API_KEY='あなたのAPIキー'", file=sys.stderr)
+        sys.exit(1)
+        
+    # 入力ファイルの存在確認
+    if not os.path.exists(args.input_file):
+        print(f"エラー: 入力ファイルが見つかりません: {args.input_file}", file=sys.stderr)
+        sys.exit(1)
+        
+    # テキストの読み込み
+    try:
+        with open(args.input_file, 'r', encoding='utf-8') as f:
+            raw_text = f.read()
+    except Exception as e:
+        print(f"エラー: ファイルの読み込みに失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
+        
+    # クレンジング
+    cleaned_text = clean_markdown(raw_text)
+    if not cleaned_text.strip():
+        print("警告: 読み上げるテキストが空です。", file=sys.stderr)
+        sys.exit(0)
+        
+    # 分割
+    chunks = split_text(cleaned_text, max_chars=args.chunk_size)
+    print(f"テキストを {len(chunks)} 個のチャンクに分割しました。音声生成を開始します...", file=sys.stderr)
+    
+    # GenAIクライアントの初期化
+    try:
+        client = genai.Client()
+    except Exception as e:
+        print(f"エラー: Google GenAI クライアントの初期化に失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
+        
+    combined_pcm_bytes = bytearray()
+    
+    # 音声生成用の設定
+    config = types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=args.voice
+                )
+            )
+        )
+    )
+    
+    for i, chunk in enumerate(chunks, 1):
+        print(f"[{i}/{len(chunks)}] 音声生成中... ({len(chunk)}文字)", file=sys.stderr)
+        try:
+            response = client.models.generate_content(
+                model=args.model,
+                contents=chunk,
+                config=config
+            )
+            
+            # 音声データの抽出
+            audio_part = None
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data:
+                        audio_part = part.inline_data
+                        break
+            
+            if not audio_part or not audio_part.data:
+                print(f"エラー: チャンク {i} で音声データを取得できませんでした。", file=sys.stderr)
+                sys.exit(1)
+                
+            raw_data = audio_part.data
+            
+            # もし返ってきた bytes が Base64 でエンコードされた状態のままであればデコードする
+            # (通常は inline_data.data 内でSDKによって bytes デコードされているが、
+            # 特殊な環境やバージョンにより Base64 文字列のままであった場合の堅牢性確保)
+            try:
+                # bytes型であるが、中身がBase64文字列（ASCII文字のみ）としてパース可能で、かつデコード結果が妥当かチェック
+                # 生のPCMは高確率で非ASCIIバイトを含むが、Base64文字列はASCIIの範囲内であるため、
+                # ASCIIデコードを試みてエラーがなく、かつbase64デコードに成功した場合はそれを使用する。
+                if isinstance(raw_data, bytes):
+                    # Base64で表される文字列パターンにマッチするか簡易テスト
+                    decoded = base64.b64decode(raw_data, validate=True)
+                    # デコードに成功した場合はそれを採用
+                    raw_data = decoded
+            except Exception:
+                # デコード失敗（またはvalidateエラー）した場合は、既に生のPCMバイナリとみなしそのまま通す
+                pass
+                
+            combined_pcm_bytes.extend(raw_data)
+            
+        except Exception as e:
+            print(f"エラー: チャンク {i} の処理中にエラーが発生しました: {e}", file=sys.stderr)
+            sys.exit(1)
+            
+    # WAVファイルへの書き出し
+    print(f"音声を結合し、WAVファイルを書き出しています: {args.output_file}", file=sys.stderr)
+    try:
+        # Gemini TTSは通常 24kHz, 16bit, Mono PCM
+        with wave.open(args.output_file, 'wb') as wav_file:
+            wav_file.setnchannels(1)     # モノラル
+            wav_file.setsampwidth(2)      # 16-bit = 2 bytes
+            wav_file.setframerate(24000)  # 24kHz
+            wav_file.writeframes(combined_pcm_bytes)
+        print("音声ファイルの生成が完了しました！", file=sys.stderr)
+    except Exception as e:
+        print(f"エラー: WAVファイルの保存に失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
