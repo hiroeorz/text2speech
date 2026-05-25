@@ -1,0 +1,7 @@
+# AI Agent Rules for text2speech Workspace
+
+You MUST read and adhere to the project rules defined in the `AGENT.md` file located at the root of this workspace BEFORE planning or making any changes to this codebase.
+
+1. **Locate and read `AGENT.md` immediately** upon starting your session.
+2. **Follow all guidelines** therein, including technical architectures (Lazy Importing to avoid help delays, Self Re-exec logic via virtual environment, and WAV audio packaging).
+3. **CRITICAL GIT RULE**: When making a Git commit, you MUST write the commit message in **Japanese** (日本語). Do NOT use English for commit messages.

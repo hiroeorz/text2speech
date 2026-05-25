@@ -130,6 +130,8 @@ text2speech/
 ├── sample.md          # 動作テスト用標準Markdown
 ├── long_sample.md     # 長文(10分相当)動作テスト用Markdown
 ├── LICENSE            # MITライセンス適用許諾書
+├── AGENT.md           # AIエージェント向け共通開発・コミット規約
+├── .clinerules        # Cline/Antigravity用自動ロード設定
 └── README.md          # 本説明書
 ```
 
