@@ -26,14 +26,6 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
     except Exception as e:
         print(f"警告: 仮想環境のPythonでの再実行に失敗しました: {e}", file=sys.stderr)
 
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    print("エラー: 'google-genai' ライブラリをインポートできません。", file=sys.stderr)
-    print("仮想環境を有効にするか、依存ライブラリをインストールしてください。", file=sys.stderr)
-    print("セットアップ例: source .venv/bin/activate && pip install -r requirements.txt", file=sys.stderr)
-    sys.exit(1)
 
 def clean_markdown(text: str) -> str:
     """Markdownの記号を除去・クレンジングする簡易処理"""
@@ -165,6 +157,17 @@ def main():
     chunks = split_text(cleaned_text, max_chars=args.chunk_size)
     print(f"テキストを {len(chunks)} 個のチャンクに分割しました。音声生成を開始します...", file=sys.stderr)
     
+    # 巨大な google-genai パッケージのインポートを遅延ロード (Lazy Import) します。
+    # これにより、-h (--help) や引数エラーなどの場合に、インポートにかかる数秒〜十数秒のオーバーヘッドを完全に回避します。
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        print("エラー: 'google-genai' ライブラリをインポートできません。", file=sys.stderr)
+        print("仮想環境を有効にするか、依存ライブラリをインストールしてください。", file=sys.stderr)
+        print("セットアップ例: source .venv/bin/activate && pip install -r requirements.txt", file=sys.stderr)
+        sys.exit(1)
+
     # GenAIクライアントの初期化
     try:
         client = genai.Client()
