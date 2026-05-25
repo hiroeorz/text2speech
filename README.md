@@ -129,5 +129,13 @@ text2speech/
 ├── requirements.txt   # 依存Pythonライブラリ定義
 ├── sample.md          # 動作テスト用標準Markdown
 ├── long_sample.md     # 長文(10分相当)動作テスト用Markdown
+├── LICENSE            # MITライセンス適用許諾書
 └── README.md          # 本説明書
 ```
+
+---
+
+## 📄 ライセンス
+
+このプロジェクトは [MIT ライセンス](LICENSE) のもとでオープンソースとして公開されています。商用・個人利用を問わず、どなたでも無償で自由に変更・再配布・使用いただくことができます。詳細は `LICENSE` ファイルをご覧ください。
+
