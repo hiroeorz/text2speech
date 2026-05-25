@@ -27,31 +27,94 @@
 
 ## 🚀 インストール & セットアップ
 
-### 1. 依存ライブラリのインストール
-本ツールのディレクトリにて、仮想環境を作成しパッケージをインストールします。
+`t2s` コマンドを使用するためのインストール方法には、**1. システム全体へインストールしてどこからでも実行可能にする方法 (推奨)** と、**2. リポジトリの作業ディレクトリ内で直接実行する方法** があります。
+
+---
+
+### 💡 推奨：システム全体へのインストール
+
+本ツールには**スマートな自己再実行 (Self Re-exec) ロジック**が組み込まれているため、実体とPython仮想環境を隔離された場所に配置したまま、シンボリックリンクを作成するだけで、依存関係の競合を起こすことなくシステム全体のどこからでも `t2s` コマンドを使用することができます。
+
+#### 方法 A: インストーラスクリプトで自動インストール (最も簡単)
+提供されている `install.sh` を実行するだけで、自動的に依存関係を含めて `~/.local/share/t2s` にセットアップし、`~/.local/bin/t2s` にシンボリックリンクを配置します。
 
 ```bash
-# 仮想環境の作成
-python3 -m venv .venv
-
-# 仮想環境へのライブラリインストール
-.venv/bin/pip install -r requirements.txt
+# 実行権限を付与してインストーラを実行
+chmod +x install.sh
+./install.sh
 ```
 
-### 2. コマンドへの実行権限付与
-`t2s` スクリプトを直接実行できるよう、実行可能属性を付与します。
+#### 方法 B: 手動でシンボリックリンクを作成してインストール
+手動で詳細にパスや配置場所を指定してインストールを行いたい場合は、以下の手順に従ってください。
 
-```bash
-chmod +x t2s
-```
+1. **リポジトリを永続的なディレクトリ（例: `~/src/text2speech`）に配置**
+2. **そのディレクトリ内で仮想環境を作成・セットアップ**
+   ```bash
+   # 仮想環境の作成
+   python3 -m venv .venv
+   # 依存ライブラリのインストール
+   .venv/bin/pip install -r requirements.txt
+   # 本体に実行権限を付与
+   chmod +x t2s
+   ```
+3. **パスの通ったディレクトリにシンボリックリンクを作成**
+   ```bash
+   # 例: ユーザーローカルの実行可能ファイル用ディレクトリ
+   ln -s ~/src/text2speech/t2s ~/.local/bin/t2s
+   ```
 
-### 3. APIキーのセットアップ
-Google AI Studio から取得したAPIキーを環境変数 `GEMINI_API_KEY` に設定します。
+*※ `~/.local/bin` に実行パスが通っていない場合は、シェル設定ファイル（`~/.bashrc` や `~/.zshrc` など）に `export PATH="$HOME/.local/bin:$PATH"` を追記してください。*
 
+---
+
+### 2. リポジトリ内での直接実行 (開発・テスト用)
+リポジトリをクローンしたディレクトリ内で直接テスト実行したい場合は、以下の簡易手順を行います。
+
+1. **仮想環境と依存関係のセットアップ**
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/pip install -r requirements.txt
+   chmod +x t2s
+   ```
+2. **実行**
+   ```bash
+   ./t2s sample.md output.wav
+   ```
+
+---
+
+### 🔑 APIキーのセットアップ
+
+Gemini APIを利用するため、Google AI Studio から取得したAPIキーを環境変数 `GEMINI_API_KEY` に設定する必要があります。
+
+#### 1. 一時的な設定 (現在のセッションのみ)
 ```bash
 export GEMINI_API_KEY="あなたのGemini_API_キー"
 ```
-*(日常的に使用する場合は、`~/.bashrc` や `~/.zshrc` に上記の設定を記述しておくことをお勧めします)*
+
+#### 2. 恒久的な設定 (ターミナル起動時に自動ロード)
+毎回コマンドを実行する前に環境変数を設定する手間を省くため、お使いのシェルの設定ファイルの末尾に追記します。
+
+**お使いのシェルを確認するコマンド:**
+```bash
+echo $SHELL
+```
+
+* **`/bin/bash` の場合 (`~/.bashrc` に追記):**
+  ```bash
+  # 設定ファイル末尾に追加
+  echo 'export GEMINI_API_KEY="あなたのGemini_API_キー"' >> ~/.bashrc
+  # 設定の即時反映
+  source ~/.bashrc
+  ```
+
+* **`/bin/zsh` の場合 (`~/.zshrc` に追記):**
+  ```bash
+  # 設定ファイル末尾に追加
+  echo 'export GEMINI_API_KEY="あなたのGemini_API_キー"' >> ~/.zshrc
+  # 設定の即時反映
+  source ~/.zshrc
+  ```
 
 ---
 
@@ -126,6 +189,7 @@ export GEMINI_API_KEY="あなたのGemini_API_キー"
 ```text
 text2speech/
 ├── t2s                # Pythonスクリプト本体 (実行可能ファイル)
+├── install.sh         # 自動インストーラスクリプト
 ├── requirements.txt   # 依存Pythonライブラリ定義
 ├── sample.md          # 動作テスト用標準Markdown
 ├── long_sample.md     # 長文(10分相当)動作テスト用Markdown
