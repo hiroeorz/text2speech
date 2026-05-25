@@ -115,7 +115,7 @@ t2s [OPTIONS] <INPUT_FILE> <OUTPUT_FILE>
 | オプション | 短縮 | デフォルト値 | 選択可能な値 / 説明 |
 |:---|:---|:---|:---|
 | `--help` | `-h` | - | ヘルプメッセージを表示して終了します。 |
-| `--model` | `-m` | `gemini-3.1-flash-tts-preview` | `gemini-3.1-flash-tts-preview`<br>`gemini-2.5-pro-preview-tts`<br>`gemini-2.5-flash-preview-tts`<br>※音声生成(TTS)に対応したGeminiモデル。 |
+| `--model` | `-m` | `gemini-2.5-flash-preview-tts` | `gemini-3.1-flash-tts-preview`<br>`gemini-2.5-pro-preview-tts`<br>`gemini-2.5-flash-preview-tts`<br>※音声生成(TTS)に対応したGeminiモデル。 |
 | `--voice` | `-v` | `Despina` | `Despina`, `Puck`, `Charon`, `Kore`, `Fenrir`, `Aoede`<br>※Geminiの提供するプリビルドの各種声質. |
 | `--chunk-size`| `-c` | `1000` | テキストを自動分割する際の目安となる最大文字数。 |
 | `--audio-profile`| `-ap` | `None` | 音声のキャラクターペルソナや詳細な声質（例: `'女性ボイス、落ち着いたトーン'`）。 |
@@ -162,7 +162,7 @@ t2s -ap "男性ボイス" -sc "騒がしいカフェ" -dn "早口で焦ってい
 ## 📝 実際の使用サンプル
 
 ### サンプル 1: デフォルト値での基本的な読み上げ
-最も標準的な設定（モデル: `gemini-3.1-flash`, 声: `Despina`）で音声を生成します。
+最も標準的な設定（モデル: `gemini-2.5-flash`, 声: `Despina`）で音声を生成します。
 
 ```bash
 t2s sample.md output.wav

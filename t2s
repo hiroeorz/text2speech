@@ -182,7 +182,7 @@ def main():
     parser.add_argument("output_file", help="出力WAVファイルのパス")
     parser.add_argument(
         "-m", "--model",
-        default="gemini-3.1-flash-tts-preview",
+        default="gemini-2.5-flash-preview-tts",
         choices=AVAILABLE_MODELS,
         help="使用するGeminiモデル。音声生成（TTS）に対応しているプレビューモデルを指定します。"
     )
