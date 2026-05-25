@@ -101,7 +101,7 @@ echo $SHELL
 
 ### 基本コマンド
 ```bash
-./t2s [OPTIONS] <INPUT_FILE> <OUTPUT_FILE>
+t2s [OPTIONS] <INPUT_FILE> <OUTPUT_FILE>
 ```
 - `<INPUT_FILE>`: 読み上げる日本語Markdownファイルのパス
 - `<OUTPUT_FILE>`: 出力するWAVファイルの書き出し先パス
@@ -110,13 +110,13 @@ echo $SHELL
 
 ## 🛠️ オプションとパラメータ
 
-`./t2s --help` を実行することで、いつでも以下の説明を表示できます。
+`t2s --help` を実行することで、いつでも以下の説明を表示できます。
 
 | オプション | 短縮 | デフォルト値 | 選択可能な値 / 説明 |
 |:---|:---|:---|:---|
 | `--help` | `-h` | - | ヘルプメッセージを表示して終了します。 |
 | `--model` | `-m` | `gemini-3.1-flash-tts-preview` | `gemini-3.1-flash-tts-preview`<br>`gemini-2.5-pro-preview-tts`<br>`gemini-2.5-flash-preview-tts`<br>※音声生成(TTS)に対応したGeminiモデル。 |
-| `--voice` | `-v` | `Despina` | `Despina`, `Puck`, `Charon`, `Kore`, `Fenrir`, `Aoede`<br>※Geminiの提供するプリビルドの各種声質。 |
+| `--voice` | `-v` | `Despina` | `Despina`, `Puck`, `Charon`, `Kore`, `Fenrir`, `Aoede`<br>※Geminiの提供するプリビルドの各種声質. |
 | `--chunk-size`| `-c` | `1000` | テキストを自動分割する際の目安となる最大文字数。 |
 
 ---
@@ -127,28 +127,28 @@ echo $SHELL
 最も標準的な設定（モデル: `gemini-3.1-flash`, 声: `Despina`）で音声を生成します。
 
 ```bash
-./t2s sample.md output.wav
+t2s sample.md output.wav
 ```
 
 ### サンプル 2: プロモデルを使って生成する
 より高品質なプロプレビューモデルを使用して音声を生成します。
 
 ```bash
-./t2s -m gemini-2.5-pro-preview-tts sample.md output_pro.wav
+t2s -m gemini-2.5-pro-preview-tts sample.md output_pro.wav
 ```
 
 ### サンプル 3: 男性ボイスなど声質を変更する
 話者を `Puck` （男性ボイス調）や `Kore` に変更して生成します。
 
 ```bash
-./t2s -v Puck sample.md output_puck.wav
+t2s -v Puck sample.md output_puck.wav
 ```
 
 ### サンプル 4: 長文テキストの分割・結合テスト
 約3,500文字（音読約10分相当）のテスト用長文テキスト `long_sample.md` を用いて、自動的に分割処理・結合処理を行わせます。
 
 ```bash
-./t2s long_sample.md long_output.wav
+t2s long_sample.md long_output.wav
 ```
 **実行時の出力ログ例:**
 ```
